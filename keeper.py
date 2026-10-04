@@ -86,8 +86,39 @@ class App(tk.Tk):
                 return False
         return False
 
+    # ---------- тёмная тема ----------
+    def _apply_dark_theme(self):
+        BG = "#1e1e1e"       # фон окна
+        PANEL = "#2b2b2b"    # поля/таблица
+        FG = "#e6e6e6"       # текст
+        SEL = "#3a5a8c"      # выделение
+        BTN = "#3c3c3c"
+        BTN_ACT = "#505050"
+        self.configure(bg=BG)
+        style = ttk.Style(self)
+        try:
+            style.theme_use("clam")
+        except tk.TclError:
+            pass
+        style.configure("TFrame", background=BG)
+        style.configure("TLabel", background=BG, foreground=FG)
+        style.configure("TButton", background=BTN, foreground=FG, borderwidth=0)
+        style.map("TButton",
+                  background=[("active", BTN_ACT), ("pressed", BTN_ACT)])
+        style.configure("TEntry", fieldbackground=PANEL, foreground=FG,
+                        insertcolor=FG, bordercolor=BTN)
+        style.configure("Treeview", background=PANEL, foreground=FG,
+                        fieldbackground=PANEL, bordercolor=BG, borderwidth=0)
+        style.map("Treeview",
+                  background=[("selected", SEL)],
+                  foreground=[("selected", "#ffffff")])
+        style.configure("Treeview.Heading", background=BTN, foreground=FG,
+                        borderwidth=0)
+        style.map("Treeview.Heading", background=[("active", BTN_ACT)])
+
     # ---------- интерфейс ----------
     def _build_ui(self):
+        self._apply_dark_theme()
         # Строка поиска сверху
         self.search_var = tk.StringVar()
         self.search_var.trace_add("write", lambda *_: self._refresh())
