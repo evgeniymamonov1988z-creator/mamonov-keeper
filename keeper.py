@@ -137,40 +137,25 @@ class App(tk.Tk):
         BTN = "#1a1a1a"
         BTN_ACT = "#333333"
         self.configure(bg=BG)
-
-        # --- крупный чёткий шрифт (чтобы было хорошо видно) ---
-        import tkinter.font as tkfont
-        UI_FONT = ("Segoe UI", 12)
-        for _name in ("TkDefaultFont", "TkTextFont", "TkMenuFont",
-                      "TkHeadingFont", "TkIconFont"):
-            try:
-                f = tkfont.nametofont(_name)
-                f.configure(family="Segoe UI", size=12)
-            except tk.TclError:
-                pass
-
         style = ttk.Style(self)
         try:
             style.theme_use("clam")
         except tk.TclError:
             pass
-        style.configure(".", font=UI_FONT)
         style.configure("TFrame", background=BG)
-        style.configure("TLabel", background=BG, foreground=FG, font=UI_FONT)
-        style.configure("TButton", background=BTN, foreground=FG, borderwidth=0,
-                        font=UI_FONT, padding=(10, 6))
+        style.configure("TLabel", background=BG, foreground=FG)
+        style.configure("TButton", background=BTN, foreground=FG, borderwidth=0)
         style.map("TButton",
                   background=[("active", BTN_ACT), ("pressed", BTN_ACT)])
         style.configure("TEntry", fieldbackground=PANEL, foreground=FG,
-                        insertcolor=FG, bordercolor=BTN, padding=4)
+                        insertcolor=FG, bordercolor=BTN)
         style.configure("Treeview", background=PANEL, foreground=FG,
-                        fieldbackground=PANEL, bordercolor=BG, borderwidth=0,
-                        font=("Segoe UI", 12), rowheight=30)
+                        fieldbackground=PANEL, bordercolor=BG, borderwidth=0)
         style.map("Treeview",
                   background=[("selected", SEL)],
                   foreground=[("selected", "#ffffff")])
         style.configure("Treeview.Heading", background=BTN, foreground=FG,
-                        borderwidth=0, font=("Segoe UI", 12, "bold"))
+                        borderwidth=0)
         style.map("Treeview.Heading", background=[("active", BTN_ACT)])
 
     # ---------- интерфейс ----------
@@ -369,7 +354,7 @@ class App(tk.Tk):
             # в таблице же всё равно останется одна строка (точки).
             ed = tk.Text(self.tree, wrap="word", height=6,
                          bg="#000000", fg="#ffffff", insertbackground="#ffffff",
-                         relief="solid", borderwidth=1, font=("Segoe UI", 12))
+                         relief="solid", borderwidth=1)
             ed.insert("1.0", value)
             ed.place(x=x, y=y, width=max(w, 300), height=max(h * 6, 110))
             ed.focus_set()
