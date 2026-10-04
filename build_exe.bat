@@ -1,22 +1,18 @@
 @echo off
-REM Сборка .exe для Windows (запускать только на Windows)
-REM Требуется: pip install pyinstaller cryptography
+REM Build Windows .exe (run on Windows only)
+REM Needs: pip install pyinstaller cryptography
+cd /d "%~dp0"
 
-chcp 65001 >nul
 echo ========================================
-echo   Сборка Ключница (Keeper)
+echo   Building Klyuchnica (Keeper)
 echo ========================================
 
-pip install -r requirements.txt
-pip install pyinstaller
+python -m pip install -r requirements.txt
+python -m pip install pyinstaller
 
-REM Режим «папка» (--onedir) — меньше ложных срабатываний антивирусов
-pyinstaller --noconfirm --clean ^
-  --name "Keeper" ^
-  --onedir ^
-  --windowed ^
-  keeper.py
+REM --onedir (folder mode) = fewer antivirus false positives
+pyinstaller --noconfirm --clean --name "Keeper" --onedir --windowed keeper.py
 
 echo.
-echo Готово. Смотрите папку dist\Keeper\
+echo Done. See folder dist\Keeper\
 pause

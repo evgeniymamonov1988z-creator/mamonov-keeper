@@ -12,9 +12,10 @@
 import os
 import sys
 import tkinter as tk
-from tkinter import ttk, messagebox, simpledialog
+from tkinter import ttk, messagebox, simpledialog, filedialog
 
 import pwgen
+import browser_io
 from vault import Vault, WrongPassword, BadFile
 
 APP_NAME = "Ключница"
@@ -162,6 +163,10 @@ class App(tk.Tk):
         ttk.Button(toolbar, text="Удалить", command=self._delete).pack(side="left")
         ttk.Button(toolbar, text="Копировать пароль",
                    command=self._copy_pw).pack(side="left", padx=4)
+        ttk.Button(toolbar, text="Импорт из браузера",
+                   command=self._import_browser).pack(side="left")
+        ttk.Button(toolbar, text="Экспорт для браузера",
+                   command=self._export_browser).pack(side="left", padx=4)
         ttk.Button(toolbar, text="Сменить мастер-пароль",
                    command=self._change_master).pack(side="right")
 
@@ -239,6 +244,74 @@ class App(tk.Tk):
         self.clipboard_clear()
         self.clipboard_append(pw)
         self.status.config(text="Пароль скопирован в буфер обмена.")
+
+    def _import_browser(self):
+        """Импорт паролей из браузеров (Chrome/Edge/Яндекс и др.)."""
+        found = browser_io.list_browsers()
+        if not found:
+            messagebox.showinfo(
+                APP_NAME,
+                "Не найдено поддерживаемых браузеров (Chrome, Edge, Яндекс, Brave, Opera).")
+            return
+        if not messagebox.askyesno(
+                APP_NAME,
+                "Найдены браузеры:\n  %s\n\n"
+                "Импортировать из них сохранённые пароли?\n"
+                "(совет: закройте браузер перед импортом)" % "\n  ".join(found)):
+            return
+        try:
+            imported = browser_io.import_passwords()
+        except browser_io.BrowserError as e:
+            messagebox.showerror(APP_NAME, str(e))
+            return
+        except Exception as e:
+            messagebox.showerror(APP_NAME, "Ошибка импорта: %s" % e)
+            return
+
+        # пропускаем дубли по (сайт + логин + пароль)
+        existing = {(e.get("url", ""), e.get("login", ""), e.get("password", ""))
+                    for e in self.vault.entries}
+        added = 0
+        for e in imported:
+            key = (e.get("url", ""), e.get("login", ""), e.get("password", ""))
+            if key in existing:
+                continue
+            self.vault.entries.append(e)
+            existing.add(key)
+            added += 1
+        if added:
+            self.vault.save()
+        self._refresh()
+        messagebox.showinfo(
+            APP_NAME,
+            "Готово.\nНайдено в браузерах: %d\nДобавлено новых: %d\nПропущено дублей: %d"
+            % (len(imported), added, len(imported) - added))
+
+    def _export_browser(self):
+        """Экспорт в CSV для импорта в браузер."""
+        if not self.vault.entries:
+            messagebox.showinfo(APP_NAME, "Нет записей для экспорта.")
+            return
+        path = filedialog.asksaveasfilename(
+            parent=self,
+            title="Сохранить пароли для браузера",
+            defaultextension=".csv",
+            initialfile="klyuchnica_passwords.csv",
+            filetypes=[("CSV (для браузера)", "*.csv")])
+        if not path:
+            return
+        try:
+            n = browser_io.export_csv(self.vault.entries, path)
+        except Exception as e:
+            messagebox.showerror(APP_NAME, "Ошибка экспорта: %s" % e)
+            return
+        messagebox.showinfo(
+            APP_NAME,
+            "Экспортировано записей: %d\n\n"
+            "Как загрузить в браузер (Chrome/Яндекс/Edge):\n"
+            "1. Откройте настройки паролей браузера.\n"
+            "2. «Импорт» → выберите этот CSV-файл.\n\n"
+            "❗ Файл не зашифрован — удалите его после импорта!" % n)
 
     def _change_master(self):
         p1 = simpledialog.askstring(APP_NAME, "Новый мастер-пароль:", show="\u2022", parent=self)
