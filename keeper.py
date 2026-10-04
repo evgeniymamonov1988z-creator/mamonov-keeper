@@ -106,8 +106,8 @@ class App(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title(APP_NAME)
-        self.geometry("640x420")
-        self.minsize(560, 360)
+        self.geometry("760x440")
+        self.minsize(640, 380)
         # Окно поверх всех приложений (не прячется за браузером и т.п.)
         self.attributes("-topmost", True)
         self.vault = Vault(vault_path())
@@ -176,6 +176,10 @@ class App(tk.Tk):
         ttk.Button(toolbar, text="Удалить", command=self._delete).pack(side="left")
         ttk.Button(toolbar, text="Копировать пароль",
                    command=self._copy_pw).pack(side="left", padx=4)
+        self._show_pw = False
+        self._show_pw_btn = ttk.Button(toolbar, text="Показать пароли",
+                                       command=self._toggle_show_pw)
+        self._show_pw_btn.pack(side="left", padx=4)
         ttk.Button(toolbar, text="Импорт из браузера",
                    command=self._import_browser).pack(side="left")
         ttk.Button(toolbar, text="Экспорт для браузера",
@@ -191,19 +195,37 @@ class App(tk.Tk):
         ttk.Entry(sfrm, textvariable=self.search_var).pack(
             side="left", fill="x", expand=True, padx=(6, 0))
 
-        cols = ("title", "login", "url")
+        cols = ("title", "login", "password", "url")
         self.tree = ttk.Treeview(self, columns=cols, show="headings", selectmode="browse")
         self.tree.heading("title", text="Название")
         self.tree.heading("login", text="Логин")
+        self.tree.heading("password", text="Пароль")
         self.tree.heading("url", text="Сайт")
-        self.tree.column("title", width=200)
-        self.tree.column("login", width=180)
-        self.tree.column("url", width=220)
+        self.tree.column("title", width=180)
+        self.tree.column("login", width=160)
+        self.tree.column("password", width=140)
+        self.tree.column("url", width=200)
         self.tree.pack(fill="both", expand=True, padx=10, pady=10)
         self.tree.bind("<Double-1>", lambda _e: self._edit())
 
         self.status = ttk.Label(self, anchor="w", padding=(10, 4))
         self.status.pack(fill="x")
+
+    def _pw_cell(self, pw):
+        """Что показывать в столбце «Пароль»: точки или сам пароль."""
+        if not pw:
+            return ""
+        return pw if self._show_pw else "\u2022" * 8
+
+    def _toggle_show_pw(self):
+        """Показать / скрыть пароли в таблице."""
+        self._show_pw = not self._show_pw
+        self._show_pw_btn.config(
+            text="Скрыть пароли" if self._show_pw else "Показать пароли")
+        if self.detected_site:
+            self._show_matches(self.detected_site)
+        else:
+            self._refresh()
 
     def _refresh(self):
         query = (self.search_var.get() if hasattr(self, "search_var") else "").lower()
@@ -213,8 +235,10 @@ class App(tk.Tk):
             hay = (e.get("title", "") + e.get("login", "") + e.get("url", "")).lower()
             if query and query not in hay:
                 continue
-            iid = self.tree.insert("", "end",
-                                   values=(e.get("title", ""), e.get("login", ""), e.get("url", "")))
+            iid = self.tree.insert(
+                "", "end",
+                values=(e.get("title", ""), e.get("login", ""),
+                        self._pw_cell(e.get("password", "")), e.get("url", "")))
             self._index_map[iid] = i
         self.status.config(text="Записей: %d" % len(self.vault.entries))
 
@@ -363,7 +387,8 @@ class App(tk.Tk):
             if watcher.same_site(site, e.get("url", "")):
                 iid = self.tree.insert(
                     "", "end",
-                    values=(e.get("title", ""), e.get("login", ""), e.get("url", "")))
+                    values=(e.get("title", ""), e.get("login", ""),
+                            self._pw_cell(e.get("password", "")), e.get("url", "")))
                 self._index_map[iid] = i
         matches = len(self._index_map)
         if matches:
