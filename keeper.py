@@ -140,9 +140,9 @@ class App(tk.Tk):
         self.tree.column("password", width=160)
         self.tree.column("del", width=40, anchor="center", stretch=False)
         self.tree.pack(fill="both", expand=True, padx=10, pady=(8, 4))
-        # чередующиеся серые оттенки строк
-        self.tree.tag_configure("odd", background="#2b2b2b")
-        self.tree.tag_configure("even", background="#363636")
+        # чередующиеся серые оттенки строк (светлее и контрастнее, чтобы было хорошо видно)
+        self.tree.tag_configure("odd", background="#4a4a4a", foreground="#ffffff")
+        self.tree.tag_configure("even", background="#5a5a5a", foreground="#ffffff")
         # клик по ячейке — копировать; клик по корзине — удалить
         self.tree.bind("<Button-1>", self._on_click)
         # двойной клик — редактировать запись
