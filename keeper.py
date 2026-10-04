@@ -92,6 +92,43 @@ class App(tk.Tk):
         return False
 
     # ---------- тёмная тема ----------
+    def _enable_clipboard_hotkeys(self):
+        """Заставить Ctrl+C/V/X/A работать даже при русской раскладке.
+
+        При русской раскладке Tk не понимает Ctrl+V (видит кириллицу),
+        поэтому ловим нажатие по коду клавиши.
+        """
+        self.bind_all("<Control-KeyPress>", self._clipboard_hotkey)
+
+    def _clipboard_hotkey(self, event):
+        if not (event.state & 0x0004):   # должен быть зажат Ctrl
+            return
+        ks = (event.keysym or "").lower()
+        # латинскую раскладку Tk обработает сам — не дублируем
+        if ks in ("v", "c", "x", "a"):
+            return
+        w = event.widget
+        kc = event.keycode
+        try:
+            if kc == 86:        # V — вставить
+                w.event_generate("<<Paste>>")
+                return "break"
+            if kc == 67:        # C — копировать
+                w.event_generate("<<Copy>>")
+                return "break"
+            if kc == 88:        # X — вырезать
+                w.event_generate("<<Cut>>")
+                return "break"
+            if kc == 65:        # A — выделить всё
+                if isinstance(w, tk.Text):
+                    w.tag_add("sel", "1.0", "end-1c")
+                elif hasattr(w, "select_range"):
+                    w.select_range(0, "end")
+                return "break"
+        except tk.TclError:
+            pass
+
+    # ---------- тёмная тема ----------
     def _apply_dark_theme(self):
         BG = "#1e1e1e"       # фон окна
         PANEL = "#2b2b2b"    # поля/таблица
@@ -124,6 +161,7 @@ class App(tk.Tk):
     # ---------- интерфейс ----------
     def _build_ui(self):
         self._apply_dark_theme()
+        self._enable_clipboard_hotkeys()
         # Строка поиска сверху
         self.search_var = tk.StringVar()
         self.search_var.trace_add("write", lambda *_: self._refresh())
