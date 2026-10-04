@@ -24,8 +24,8 @@ jobs:
           python -m pip install -r requirements.txt
           python -m pip install pyinstaller
 
-      - name: Build EXE (folder mode)
-        run: pyinstaller --noconfirm --clean --name "Keeper" --onedir --windowed keeper.py
+      - name: Build EXE (single file)
+        run: pyinstaller --noconfirm --clean --name "Keeper" --onefile --windowed keeper.py
 
       - name: Create self-signed certificate and sign
         shell: pwsh
@@ -38,20 +38,13 @@ jobs:
             -KeyExportPolicy Exportable `
             -NotAfter (Get-Date).AddYears(5)
 
-          Get-ChildItem -Path dist\Keeper -Recurse -Include *.exe | ForEach-Object {
-            Write-Host "Signing $($_.FullName)"
-            Set-AuthenticodeSignature -FilePath $_.FullName -Certificate $cert | Out-Null
-          }
+          Set-AuthenticodeSignature -FilePath dist\Keeper.exe -Certificate $cert | Out-Null
 
-          Write-Host "Signature on main EXE:"
-          Get-AuthenticodeSignature -FilePath dist\Keeper\Keeper.exe | Format-List
-
-      - name: Package
-        shell: pwsh
-        run: Compress-Archive -Path dist\Keeper\* -DestinationPath Keeper-signed.zip -Force
+          Write-Host "Signature on EXE:"
+          Get-AuthenticodeSignature -FilePath dist\Keeper.exe | Format-List
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Keeper-signed
-          path: Keeper-signed.zip
+          name: Keeper-signed-exe
+          path: dist\Keeper.exe
