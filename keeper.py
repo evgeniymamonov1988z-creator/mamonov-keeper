@@ -76,6 +76,7 @@ class EntryDialog(tk.Toplevel):
         ttk.Button(bar, text="Сохранить", command=self._ok).pack(side="right", padx=(0, 8))
 
         self.transient(master)
+        self.attributes("-topmost", True)
         self.grab_set()
         self.wait_window()
 
@@ -105,6 +106,8 @@ class App(tk.Tk):
         self.title(APP_NAME)
         self.geometry("640x420")
         self.minsize(560, 360)
+        # Окно поверх всех приложений (не прячется за браузером и т.п.)
+        self.attributes("-topmost", True)
         self.vault = Vault(vault_path())
 
         if not self._unlock():
