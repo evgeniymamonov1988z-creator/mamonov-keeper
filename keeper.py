@@ -11,13 +11,10 @@
 
 import os
 import sys
-import threading
 import tkinter as tk
-from tkinter import ttk, messagebox, simpledialog, filedialog
+from tkinter import ttk, messagebox, simpledialog
 
 import pwgen
-import browser_io
-import watcher
 from vault import Vault, WrongPassword, BadFile
 
 APP_NAME = "Ключница"
@@ -111,11 +108,6 @@ class App(tk.Tk):
         # Окно поверх всех приложений (не прячется за браузером и т.п.)
         self.attributes("-topmost", True)
         self.vault = Vault(vault_path())
-        # слежение за браузером включено всегда (по умолчанию)
-        self.watch_on = True
-        self._watch_job = None
-        self._last_site = None
-        self.detected_site = None
 
         if not self._unlock():
             self.destroy()
@@ -123,9 +115,6 @@ class App(tk.Tk):
 
         self._build_ui()
         self._refresh()
-        # сразу начинаем следить за браузером, если это возможно
-        if watcher.available():
-            self._watch_tick()
 
     # ---------- разблокировка ----------
     def _unlock(self) -> bool:
@@ -169,63 +158,49 @@ class App(tk.Tk):
 
     # ---------- интерфейс ----------
     def _build_ui(self):
-        toolbar = ttk.Frame(self, padding=(10, 8))
-        toolbar.pack(fill="x")
-        ttk.Button(toolbar, text="Добавить", command=self._add).pack(side="left")
-        ttk.Button(toolbar, text="Изменить", command=self._edit).pack(side="left", padx=4)
-        ttk.Button(toolbar, text="Удалить", command=self._delete).pack(side="left")
-        ttk.Button(toolbar, text="Копировать пароль",
-                   command=self._copy_pw).pack(side="left", padx=4)
-        self._show_pw = False
-        self._show_pw_btn = ttk.Button(toolbar, text="Показать пароли",
-                                       command=self._toggle_show_pw)
-        self._show_pw_btn.pack(side="left", padx=4)
-        ttk.Button(toolbar, text="Импорт из браузера",
-                   command=self._import_browser).pack(side="left")
-        ttk.Button(toolbar, text="Экспорт для браузера",
-                   command=self._export_browser).pack(side="left", padx=4)
-        ttk.Button(toolbar, text="Сменить мастер-пароль",
-                   command=self._change_master).pack(side="right")
-
+        # Строка поиска сверху
         self.search_var = tk.StringVar()
         self.search_var.trace_add("write", lambda *_: self._refresh())
-        sfrm = ttk.Frame(self, padding=(10, 0))
+        sfrm = ttk.Frame(self, padding=(10, 8))
         sfrm.pack(fill="x")
         ttk.Label(sfrm, text="Поиск:").pack(side="left")
         ttk.Entry(sfrm, textvariable=self.search_var).pack(
             side="left", fill="x", expand=True, padx=(6, 0))
 
-        cols = ("title", "login", "password", "url")
+        # Таблица записей. Последний столбец — корзина для удаления.
+        cols = ("title", "login", "password", "url", "del")
         self.tree = ttk.Treeview(self, columns=cols, show="headings", selectmode="browse")
         self.tree.heading("title", text="Название")
         self.tree.heading("login", text="Логин")
         self.tree.heading("password", text="Пароль")
         self.tree.heading("url", text="Сайт")
-        self.tree.column("title", width=180)
-        self.tree.column("login", width=160)
-        self.tree.column("password", width=140)
-        self.tree.column("url", width=200)
-        self.tree.pack(fill="both", expand=True, padx=10, pady=10)
-        self.tree.bind("<Double-1>", lambda _e: self._edit())
+        self.tree.heading("del", text="")
+        self.tree.column("title", width=170)
+        self.tree.column("login", width=150)
+        self.tree.column("password", width=130)
+        self.tree.column("url", width=190)
+        self.tree.column("del", width=40, anchor="center", stretch=False)
+        self.tree.pack(fill="both", expand=True, padx=10, pady=(8, 4))
+        # клик по ячейке — копировать; клик по корзине — удалить
+        self.tree.bind("<Button-1>", self._on_click)
+        # двойной клик — редактировать запись
+        self.tree.bind("<Double-1>", self._on_double_click)
+
+        # Нижняя панель: «+» для добавления под списком
+        bottom = ttk.Frame(self, padding=(10, 2))
+        bottom.pack(fill="x")
+        ttk.Button(bottom, text="\u2795  Добавить", command=self._add).pack(side="left")
+        ttk.Button(bottom, text="Сменить мастер-пароль",
+                   command=self._change_master).pack(side="right")
 
         self.status = ttk.Label(self, anchor="w", padding=(10, 4))
         self.status.pack(fill="x")
+        self.status.config(
+            text="Клик по ячейке — скопировать. Клик по 🗑 — удалить. Двойной клик — изменить.")
 
     def _pw_cell(self, pw):
-        """Что показывать в столбце «Пароль»: точки или сам пароль."""
-        if not pw:
-            return ""
-        return pw if self._show_pw else "\u2022" * 8
-
-    def _toggle_show_pw(self):
-        """Показать / скрыть пароли в таблице."""
-        self._show_pw = not self._show_pw
-        self._show_pw_btn.config(
-            text="Скрыть пароли" if self._show_pw else "Показать пароли")
-        if self.detected_site:
-            self._show_matches(self.detected_site)
-        else:
-            self._refresh()
+        """В столбце «Пароль» всегда точки (сам пароль — кликом копируется)."""
+        return "\u2022" * 8 if pw else ""
 
     def _refresh(self):
         query = (self.search_var.get() if hasattr(self, "search_var") else "").lower()
@@ -238,7 +213,7 @@ class App(tk.Tk):
             iid = self.tree.insert(
                 "", "end",
                 values=(e.get("title", ""), e.get("login", ""),
-                        self._pw_cell(e.get("password", "")), e.get("url", "")))
+                        self._pw_cell(e.get("password", "")), e.get("url", ""), "\U0001f5d1"))
             self._index_map[iid] = i
         self.status.config(text="Записей: %d" % len(self.vault.entries))
 
@@ -247,6 +222,47 @@ class App(tk.Tk):
         if not sel:
             return None
         return self._index_map.get(sel[0])
+
+    # ---------- клики по таблице ----------
+    def _on_click(self, event):
+        """Клик по ячейке: копировать значение; клик по корзине: удалить."""
+        if self.tree.identify("region", event.x, event.y) != "cell":
+            return
+        row = self.tree.identify_row(event.y)
+        if not row:
+            return
+        idx = self._index_map.get(row)
+        if idx is None:
+            return
+        col = self.tree.identify_column(event.x)
+        if col == "#5":            # корзина
+            self._delete_index(idx)
+            return
+        e = self.vault.entries[idx]
+        fields = {
+            "#1": ("title", "Название"),
+            "#2": ("login", "Логин"),
+            "#3": ("password", "Пароль"),
+            "#4": ("url", "Сайт"),
+        }
+        if col not in fields:
+            return
+        key, label = fields[col]
+        value = e.get(key, "")
+        if not value:
+            self.status.config(text="Это поле пустое.")
+            return
+        self.clipboard_clear()
+        self.clipboard_append(value)
+        self.status.config(text="Скопировано: %s" % label)
+
+    def _on_double_click(self, event):
+        """Двойной клик по строке (не по корзине) — изменить запись."""
+        if self.tree.identify("region", event.x, event.y) != "cell":
+            return
+        if self.tree.identify_column(event.x) == "#5":
+            return
+        self._edit()
 
     # ---------- действия ----------
     def _add(self):
@@ -266,147 +282,16 @@ class App(tk.Tk):
 
     def _delete(self):
         idx = self._selected_index()
+        self._delete_index(idx)
+
+    def _delete_index(self, idx):
+        """Удалить запись по номеру (с подтверждением)."""
         if idx is None:
             return
         title = self.vault.entries[idx].get("title", "")
-        if messagebox.askyesno(APP_NAME, "Удалить запись «%s»?" % title):
+        if messagebox.askyesno(APP_NAME, "Удалить запись «%s»?" % title, parent=self):
             self.vault.delete(idx)
             self._refresh()
-
-    def _copy_pw(self):
-        idx = self._selected_index()
-        if idx is None:
-            return
-        pw = self.vault.entries[idx].get("password", "")
-        self.clipboard_clear()
-        self.clipboard_append(pw)
-        self.status.config(text="Пароль скопирован в буфер обмена.")
-
-    def _import_browser(self):
-        """Импорт паролей из браузеров (Chrome/Edge/Яндекс и др.)."""
-        found = browser_io.list_browsers()
-        if not found:
-            messagebox.showinfo(
-                APP_NAME,
-                "Не найдено поддерживаемых браузеров (Chrome, Edge, Яндекс, Brave, Opera).")
-            return
-        if not messagebox.askyesno(
-                APP_NAME,
-                "Найдены браузеры:\n  %s\n\n"
-                "Импортировать из них сохранённые пароли?\n"
-                "(совет: закройте браузер перед импортом)" % "\n  ".join(found)):
-            return
-        try:
-            imported = browser_io.import_passwords()
-        except browser_io.BrowserError as e:
-            messagebox.showerror(APP_NAME, str(e))
-            return
-        except Exception as e:
-            messagebox.showerror(APP_NAME, "Ошибка импорта: %s" % e)
-            return
-
-        # пропускаем дубли по (сайт + логин + пароль)
-        existing = {(e.get("url", ""), e.get("login", ""), e.get("password", ""))
-                    for e in self.vault.entries}
-        added = 0
-        for e in imported:
-            key = (e.get("url", ""), e.get("login", ""), e.get("password", ""))
-            if key in existing:
-                continue
-            self.vault.entries.append(e)
-            existing.add(key)
-            added += 1
-        if added:
-            self.vault.save()
-        self._refresh()
-        messagebox.showinfo(
-            APP_NAME,
-            "Готово.\nНайдено в браузерах: %d\nДобавлено новых: %d\nПропущено дублей: %d"
-            % (len(imported), added, len(imported) - added))
-
-    def _export_browser(self):
-        """Экспорт в CSV для импорта в браузер."""
-        if not self.vault.entries:
-            messagebox.showinfo(APP_NAME, "Нет записей для экспорта.")
-            return
-        path = filedialog.asksaveasfilename(
-            parent=self,
-            title="Сохранить пароли для браузера",
-            defaultextension=".csv",
-            initialfile="klyuchnica_passwords.csv",
-            filetypes=[("CSV (для браузера)", "*.csv")])
-        if not path:
-            return
-        try:
-            n = browser_io.export_csv(self.vault.entries, path)
-        except Exception as e:
-            messagebox.showerror(APP_NAME, "Ошибка экспорта: %s" % e)
-            return
-        messagebox.showinfo(
-            APP_NAME,
-            "Экспортировано записей: %d\n\n"
-            "Как загрузить в браузер (Chrome/Яндекс/Edge):\n"
-            "1. Откройте настройки паролей браузера.\n"
-            "2. «Импорт» → выберите этот CSV-файл.\n\n"
-            "❗ Файл не зашифрован — удалите его после импорта!" % n)
-
-    # ---------- слежение за браузером ----------
-    def _watch_tick(self):
-        """Один цикл проверки — в фоновом потоке, чтобы окно не подвисало."""
-        if not self.watch_on:
-            return
-
-        def work():
-            try:
-                site = watcher.get_active_site()
-            except Exception:
-                site = None
-            try:
-                self.after(0, lambda: self._watch_result(site))
-            except Exception:
-                pass
-
-        threading.Thread(target=work, daemon=True).start()
-
-    def _watch_result(self, site):
-        """Пришёл результат определения сайта — обновить список."""
-        if not self.watch_on:
-            return
-        if site and site != self._last_site:
-            self._last_site = site
-            self.detected_site = site
-            self._show_matches(site)
-        # следующая проверка
-        self._watch_job = self.after(1200, self._watch_tick)
-
-    def _show_matches(self, site):
-        """Показать записи, подходящие к открытому сайту.
-
-        Если совпадений нет — не прячем список, а показываем все пароли.
-        """
-        matched = [i for i, e in enumerate(self.vault.entries)
-                   if watcher.same_site(site, e.get("url", ""))]
-        if not matched:
-            # ничего не нашли — показываем весь список (не пугаем пустотой)
-            self._refresh()
-            self.status.config(
-                text="Сайт: %s — отдельного пароля нет, показаны все записи." % site)
-            return
-        self.tree.delete(*self.tree.get_children())
-        self._index_map = {}
-        for i in matched:
-            e = self.vault.entries[i]
-            iid = self.tree.insert(
-                "", "end",
-                values=(e.get("title", ""), e.get("login", ""),
-                        self._pw_cell(e.get("password", "")), e.get("url", "")))
-            self._index_map[iid] = i
-        first = next(iter(self._index_map))
-        self.tree.selection_set(first)
-        self.tree.focus(first)
-        self.status.config(
-            text="Сайт: %s — паролей: %d. Нажмите «Копировать пароль»."
-                 % (site, len(matched)))
 
     def _change_master(self):
         p1 = simpledialog.askstring(APP_NAME, "Новый мастер-пароль:", show="\u2022", parent=self)
