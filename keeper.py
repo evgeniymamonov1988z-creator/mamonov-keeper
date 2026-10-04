@@ -310,16 +310,31 @@ class App(tk.Tk):
             return
         x, y, w, h = bbox
         value = self.vault.entries[idx].get(key, "")
-        ed = ttk.Entry(self.tree)
         if key == "password":
-            ed.config(show="")  # при редактировании пароль виден
-        ed.insert(0, value)
-        ed.select_range(0, "end")
-        ed.place(x=x, y=y, width=w, height=h)
-        ed.focus_set()
-        ed.bind("<Return>", lambda e: self._commit_edit())
-        ed.bind("<Escape>", lambda e: self._close_editor())
-        ed.bind("<FocusOut>", lambda e: self._commit_edit())
+            # Ключ/пароль может быть длинным и многострочным (например, SSH-ключ).
+            # Показываем повышенное поле, чтобы удобно вставлять целиком;
+            # в таблице же всё равно останется одна строка (точки).
+            ed = tk.Text(self.tree, wrap="word", height=6,
+                         bg="#2b2b2b", fg="#ffffff", insertbackground="#ffffff",
+                         relief="solid", borderwidth=1)
+            ed.insert("1.0", value)
+            ed.place(x=x, y=y, width=max(w, 300), height=max(h * 6, 110))
+            ed.focus_set()
+            ed.bind("<Escape>", lambda e: self._close_editor())
+            ed.bind("<FocusOut>", lambda e: self._commit_edit())
+            self._editor_is_text = True
+            self.status.config(
+                text="Вставьте ключ/пароль (можно многострочный). Клик вне поля — сохранить, Esc — отмена.")
+        else:
+            ed = ttk.Entry(self.tree)
+            ed.insert(0, value)
+            ed.select_range(0, "end")
+            ed.place(x=x, y=y, width=w, height=h)
+            ed.focus_set()
+            ed.bind("<Return>", lambda e: self._commit_edit())
+            ed.bind("<Escape>", lambda e: self._close_editor())
+            ed.bind("<FocusOut>", lambda e: self._commit_edit())
+            self._editor_is_text = False
         self._editor = ed
         self._edit_iid = iid
         self._edit_idx = idx
@@ -329,7 +344,10 @@ class App(tk.Tk):
         """Сохранить введённое значение."""
         if self._editor is None:
             return
-        value = self._editor.get().strip()
+        if getattr(self, "_editor_is_text", False):
+            value = self._editor.get("1.0", "end-1c").strip()
+        else:
+            value = self._editor.get().strip()
         idx = self._edit_idx
         key = self._edit_key
         self._close_editor()
