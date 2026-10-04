@@ -14,7 +14,6 @@ import sys
 import tkinter as tk
 from tkinter import ttk, messagebox, simpledialog
 
-import pwgen
 from vault import Vault, WrongPassword, BadFile
 
 APP_NAME = "Ключница"
@@ -26,77 +25,6 @@ def vault_path() -> str:
     folder = os.path.join(base, "MAMONOV", "Klyuchnica")
     os.makedirs(folder, exist_ok=True)
     return os.path.join(folder, "vault.dat")
-
-
-class EntryDialog(tk.Toplevel):
-    """Окно добавления / редактирования записи."""
-
-    def __init__(self, master, title, entry=None):
-        super().__init__(master)
-        self.title(title)
-        self.resizable(False, False)
-        self.result = None
-        entry = entry or {}
-
-        self._show_pw = tk.BooleanVar(value=False)
-        self.vars = {
-            "title": tk.StringVar(value=entry.get("title", "")),
-            "login": tk.StringVar(value=entry.get("login", "")),
-            "password": tk.StringVar(value=entry.get("password", "")),
-            "url": tk.StringVar(value=entry.get("url", "")),
-            "note": tk.StringVar(value=entry.get("note", "")),
-        }
-
-        frm = ttk.Frame(self, padding=16)
-        frm.grid(sticky="nsew")
-        rows = [
-            ("Название", "title"),
-            ("Логин", "login"),
-            ("Пароль", "password"),
-            ("Сайт", "url"),
-            ("Примечание", "note"),
-        ]
-        for i, (label, key) in enumerate(rows):
-            ttk.Label(frm, text=label + ":").grid(row=i, column=0, sticky="e", padx=(0, 8), pady=4)
-            if key == "password":
-                self._pw_entry = ttk.Entry(frm, textvariable=self.vars[key], width=34, show="\u2022")
-                self._pw_entry.grid(row=i, column=1, sticky="we", pady=4)
-                btns = ttk.Frame(frm)
-                btns.grid(row=i, column=2, padx=(8, 0))
-                ttk.Button(btns, text="👁", width=3, command=self._toggle).pack(side="left")
-                ttk.Button(btns, text="Создать", command=self._generate).pack(side="left", padx=(4, 0))
-            else:
-                ttk.Entry(frm, textvariable=self.vars[key], width=34).grid(
-                    row=i, column=1, columnspan=2, sticky="we", pady=4)
-
-        bar = ttk.Frame(frm)
-        bar.grid(row=len(rows), column=0, columnspan=3, pady=(14, 0), sticky="e")
-        ttk.Button(bar, text="Отмена", command=self.destroy).pack(side="right")
-        ttk.Button(bar, text="Сохранить", command=self._ok).pack(side="right", padx=(0, 8))
-
-        self.transient(master)
-        self.attributes("-topmost", True)
-        self.grab_set()
-        self.wait_window()
-
-    def _toggle(self):
-        self._show_pw.set(not self._show_pw.get())
-        self._pw_entry.config(show="" if self._show_pw.get() else "\u2022")
-
-    def _generate(self):
-        pw = pwgen.generate(16)
-        self.vars["password"].set(pw)
-        self._pw_entry.config(show="")
-        self._show_pw.set(True)
-
-    def _ok(self):
-        has_any = any(self.vars[k].get().strip() for k in ("login", "password", "note"))
-        if not has_any:
-            messagebox.showwarning(
-                APP_NAME, "Заполните хотя бы логин, пароль или примечание.", parent=self)
-            return
-        self.result = {k: v.get().strip() for k, v in self.vars.items()}
-        self.destroy()
 
 
 class App(tk.Tk):
@@ -193,10 +121,12 @@ class App(tk.Tk):
         ttk.Button(bottom, text="Сменить мастер-пароль",
                    command=self._change_master).pack(side="right")
 
+        self._editor = None  # поле для редактирования прямо в таблице
+
         self.status = ttk.Label(self, anchor="w", padding=(10, 4))
         self.status.pack(fill="x")
         self.status.config(
-            text="Клик по ячейке — скопировать. Клик по 🗑 — удалить. Двойной клик — изменить.")
+            text="Клик по ячейке — скопировать. Двойной клик — изменить. Клик по 🗑 — удалить.")
 
     def _pw_cell(self, pw):
         """В столбце «Пароль» всегда точки (сам пароль — кликом копируется)."""
@@ -257,28 +187,86 @@ class App(tk.Tk):
         self.status.config(text="Скопировано: %s" % label)
 
     def _on_double_click(self, event):
-        """Двойной клик по строке (не по корзине) — изменить запись."""
+        """Двойной клик по ячейке (не по корзине) — редактировать прямо в таблице."""
         if self.tree.identify("region", event.x, event.y) != "cell":
             return
-        if self.tree.identify_column(event.x) == "#4":
+        row = self.tree.identify_row(event.y)
+        col = self.tree.identify_column(event.x)
+        if not row or col == "#4":
             return
-        self._edit()
+        self._begin_edit(row, col)
 
-    # ---------- действия ----------
+    # ---------- редактирование прямо в таблице ----------
+    _COL_FIELD = {"#1": "note", "#2": "login", "#3": "password"}
+
     def _add(self):
-        dlg = EntryDialog(self, "Новая запись")
-        if dlg.result:
-            self.vault.add(dlg.result)
-            self._refresh()
+        """«+»: добавить пустую строку и сразу дать ввести в неё данные."""
+        self._close_editor()
+        self.search_var.set("")  # чтобы новая строка точно была видна
+        self.vault.add({"title": "", "login": "", "password": "", "url": "", "note": ""})
+        self._refresh()
+        new_idx = len(self.vault.entries) - 1
+        iid = None
+        for k, v in self._index_map.items():
+            if v == new_idx:
+                iid = k
+                break
+        if iid is None:
+            return
+        self.tree.selection_set(iid)
+        self.tree.see(iid)
+        # начать ввод с первого столбца (Примечание)
+        self.after(50, lambda: self._begin_edit(iid, "#1"))
 
-    def _edit(self):
-        idx = self._selected_index()
+    def _begin_edit(self, iid, col):
+        """Показать поле ввода поверх ячейки."""
+        key = self._COL_FIELD.get(col)
+        if key is None:
+            return
+        idx = self._index_map.get(iid)
         if idx is None:
             return
-        dlg = EntryDialog(self, "Изменить запись", self.vault.entries[idx])
-        if dlg.result:
-            self.vault.update(idx, dlg.result)
+        self._close_editor()
+        self.tree.see(iid)
+        bbox = self.tree.bbox(iid, col)
+        if not bbox:
+            return
+        x, y, w, h = bbox
+        value = self.vault.entries[idx].get(key, "")
+        ed = ttk.Entry(self.tree)
+        if key == "password":
+            ed.config(show="")  # при редактировании пароль виден
+        ed.insert(0, value)
+        ed.select_range(0, "end")
+        ed.place(x=x, y=y, width=w, height=h)
+        ed.focus_set()
+        ed.bind("<Return>", lambda e: self._commit_edit())
+        ed.bind("<Escape>", lambda e: self._close_editor())
+        ed.bind("<FocusOut>", lambda e: self._commit_edit())
+        self._editor = ed
+        self._edit_iid = iid
+        self._edit_idx = idx
+        self._edit_key = key
+
+    def _commit_edit(self):
+        """Сохранить введённое значение."""
+        if self._editor is None:
+            return
+        value = self._editor.get().strip()
+        idx = self._edit_idx
+        key = self._edit_key
+        self._close_editor()
+        if 0 <= idx < len(self.vault.entries):
+            self.vault.entries[idx][key] = value
+            self.vault.save()
             self._refresh()
+
+    def _close_editor(self):
+        """Убрать поле ввода без сохранения."""
+        if self._editor is not None:
+            ed = self._editor
+            self._editor = None  # сначала обнулить, чтобы FocusOut не зациклился
+            ed.destroy()
 
     def _delete(self):
         idx = self._selected_index()
