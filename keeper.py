@@ -380,25 +380,33 @@ class App(tk.Tk):
         self._watch_job = self.after(1200, self._watch_tick)
 
     def _show_matches(self, site):
-        """Показать только записи, подходящие к открытому сайту."""
+        """Показать записи, подходящие к открытому сайту.
+
+        Если совпадений нет — не прячем список, а показываем все пароли.
+        """
+        matched = [i for i, e in enumerate(self.vault.entries)
+                   if watcher.same_site(site, e.get("url", ""))]
+        if not matched:
+            # ничего не нашли — показываем весь список (не пугаем пустотой)
+            self._refresh()
+            self.status.config(
+                text="Сайт: %s — отдельного пароля нет, показаны все записи." % site)
+            return
         self.tree.delete(*self.tree.get_children())
         self._index_map = {}
-        for i, e in enumerate(self.vault.entries):
-            if watcher.same_site(site, e.get("url", "")):
-                iid = self.tree.insert(
-                    "", "end",
-                    values=(e.get("title", ""), e.get("login", ""),
-                            self._pw_cell(e.get("password", "")), e.get("url", "")))
-                self._index_map[iid] = i
-        matches = len(self._index_map)
-        if matches:
-            first = next(iter(self._index_map))
-            self.tree.selection_set(first)
-            self.tree.focus(first)
-            self.status.config(
-                text="Сайт: %s — паролей: %d. Нажмите «Копировать пароль»." % (site, matches))
-        else:
-            self.status.config(text="Сайт: %s — подходящих паролей нет." % site)
+        for i in matched:
+            e = self.vault.entries[i]
+            iid = self.tree.insert(
+                "", "end",
+                values=(e.get("title", ""), e.get("login", ""),
+                        self._pw_cell(e.get("password", "")), e.get("url", "")))
+            self._index_map[iid] = i
+        first = next(iter(self._index_map))
+        self.tree.selection_set(first)
+        self.tree.focus(first)
+        self.status.config(
+            text="Сайт: %s — паролей: %d. Нажмите «Копировать пароль»."
+                 % (site, len(matched)))
 
     def _change_master(self):
         p1 = simpledialog.askstring(APP_NAME, "Новый мастер-пароль:", show="\u2022", parent=self)
