@@ -1,0 +1,17 @@
+# Сборка
+build/
+dist/
+*.spec
+__pycache__/
+*.pyc
+
+# Локальное хранилище паролей — НИКОГДА не коммитить!
+vault.dat
+*.dat
+
+# Служебное
+.venv/
+venv/
+.vscode/
+.idea/
+*.tmp
