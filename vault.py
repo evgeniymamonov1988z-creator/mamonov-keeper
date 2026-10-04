@@ -43,6 +43,32 @@ def _derive_key(master_password: str, salt: bytes) -> bytes:
     return base64.urlsafe_b64encode(raw)
 
 
+def read_vault_file(path: str, master_password: str) -> list:
+    """Прочитать записи из любого файла-архива «Ключницы».
+
+    Возвращает список записей. Бросает BadFile, если это не наш файл,
+    и WrongPassword, если пароль не подходит.
+    """
+    with open(path, "rb") as f:
+        blob = f.read()
+    if blob[:len(MAGIC)] != MAGIC:
+        raise BadFile("Это не файл-архив «Ключницы».")
+    pos = len(MAGIC)
+    version = blob[pos]
+    pos += 1
+    if version != _VERSION:
+        raise BadFile("Неподдерживаемая версия файла.")
+    salt = blob[pos:pos + _SALT_LEN]
+    pos += _SALT_LEN
+    token = blob[pos:]
+    fernet = Fernet(_derive_key(master_password, salt))
+    try:
+        data = fernet.decrypt(token)
+    except InvalidToken:
+        raise WrongPassword("Неверный мастер-пароль.")
+    return json.loads(data.decode("utf-8"))
+
+
 class Vault:
     """Одно зашифрованное хранилище паролей."""
 
@@ -125,6 +151,21 @@ class Vault:
     def delete(self, index: int) -> None:
         del self.entries[index]
         self.save()
+
+    def export_backup(self, dest: str) -> None:
+        """Сохранить закрытый (зашифрованный) архив со всеми записями.
+
+        Архив защищён текущим мастер-паролем (тот же формат, что и vault.dat).
+        """
+        if not self.is_open:
+            raise RuntimeError("Хранилище не открыто.")
+        plain = json.dumps(self.entries, ensure_ascii=False).encode("utf-8")
+        token = self._fernet.encrypt(plain)
+        blob = MAGIC + bytes([_VERSION]) + self._salt + token
+        with open(dest, "wb") as f:
+            f.write(blob)
+            f.flush()
+            os.fsync(f.fileno())
 
     def lock(self) -> None:
         """Забыть ключ из памяти (блокировка)."""

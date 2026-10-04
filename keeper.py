@@ -12,8 +12,11 @@
 import os
 import sys
 import tkinter as tk
-from tkinter import ttk, messagebox, simpledialog
+from tkinter import ttk, messagebox, simpledialog, filedialog
 
+import datetime
+
+import vault as vaultmod
 from vault import Vault, WrongPassword, BadFile
 
 APP_NAME = "Ключница"
@@ -63,6 +66,7 @@ class App(tk.Tk):
                 messagebox.showerror(APP_NAME, "Пароли не совпадают.")
                 return False
             self.vault.create(pw1)
+            self._master = pw1
             messagebox.showinfo(
                 APP_NAME,
                 "Хранилище создано.\n\nВАЖНО: если забыть мастер-пароль, "
@@ -77,6 +81,7 @@ class App(tk.Tk):
                 return False
             try:
                 self.vault.open(pw)
+                self._master = pw
                 self.deiconify()
                 return True
             except WrongPassword:
@@ -156,6 +161,20 @@ class App(tk.Tk):
         ttk.Button(bottom, text="\u2795  Добавить", command=self._add).pack(side="left")
         ttk.Button(bottom, text="Сменить мастер-пароль",
                    command=self._change_master).pack(side="right")
+
+        # Панель архива: сохранить на Рабочий стол и загрузить из файла
+        arc = ttk.Frame(self, padding=(10, 2))
+        arc.pack(fill="x")
+        ttk.Button(arc, text="Сохранить архив", command=self._save_backup).pack(side="left")
+        ttk.Label(arc, text="Архив:").pack(side="left", padx=(14, 0))
+        self.backup_var = tk.StringVar()
+        bk_entry = ttk.Entry(arc, textvariable=self.backup_var, width=24)
+        bk_entry.pack(side="left", padx=(4, 0))
+        bk_entry.bind("<Return>", lambda e: self._load_backup(self.backup_var.get().strip()))
+        ttk.Button(arc, text="\u2026", width=3, command=self._browse_backup).pack(side="left", padx=(4, 0))
+        ttk.Button(arc, text="Загрузить",
+                   command=lambda: self._load_backup(self.backup_var.get().strip())).pack(
+                       side="left", padx=(4, 0))
 
         self._editor = None  # поле для редактирования прямо в таблице
 
@@ -349,7 +368,112 @@ class App(tk.Tk):
             messagebox.showerror(APP_NAME, "Пароли не совпадают.")
             return
         self.vault.change_master_password(p1)
+        self._master = p1
         messagebox.showinfo(APP_NAME, "Мастер-пароль изменён.")
+
+    # ---------- архив (сохранить / загрузить) ----------
+    def _desktop_dir(self):
+        """Найти папку Рабочего стола (с учётом OneDrive)."""
+        home = os.path.expanduser("~")
+        candidates = [
+            os.path.join(home, "Desktop"),
+            os.path.join(home, "Рабочий стол"),
+            os.path.join(home, "OneDrive", "Desktop"),
+            os.path.join(home, "OneDrive", "Рабочий стол"),
+        ]
+        for c in candidates:
+            if os.path.isdir(c):
+                return c
+        return home
+
+    def _save_backup(self):
+        """Сохранить закрытый архив со всеми записями на Рабочий стол."""
+        self._close_editor()
+        stamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M")
+        name = "Klyuchnica-backup-%s.klch" % stamp
+        dest = os.path.join(self._desktop_dir(), name)
+        try:
+            self.vault.export_backup(dest)
+        except Exception as ex:
+            messagebox.showerror(APP_NAME, "Не удалось сохранить архив:\n%s" % ex)
+            return
+        messagebox.showinfo(
+            APP_NAME,
+            "Архив сохранён на Рабочий стол:\n%s\n\n"
+            "Он зашифрован вашим мастер-паролем." % name)
+        self.status.config(text="Архив сохранён: %s" % name)
+
+    def _browse_backup(self):
+        """Выбрать файл-архив и загрузить его."""
+        path = filedialog.askopenfilename(
+            parent=self, title="Выберите архив «Ключницы»",
+            initialdir=self._desktop_dir(),
+            filetypes=[("Архив Ключницы", "*.klch"), ("Все файлы", "*.*")])
+        if not path:
+            return
+        self.backup_var.set(path)
+        self._load_backup(path)
+
+    def _entry_key(self, e):
+        return (e.get("title", ""), e.get("login", ""), e.get("password", ""),
+                e.get("url", ""), e.get("note", ""))
+
+    def _load_backup(self, path):
+        """Загрузить записи из архива и добавить к имеющимся."""
+        self._close_editor()
+        if not path:
+            messagebox.showwarning(APP_NAME, "Сначала укажите файл-архив (кнопка «…»).", parent=self)
+            return
+        if not os.path.isfile(path):
+            messagebox.showerror(APP_NAME, "Файл не найден:\n%s" % path, parent=self)
+            return
+        entries = None
+        # 1) пробуем текущим мастер-паролем
+        try:
+            entries = vaultmod.read_vault_file(path, self._master)
+        except BadFile as ex:
+            messagebox.showerror(APP_NAME, str(ex), parent=self)
+            return
+        except OSError as ex:
+            messagebox.showerror(APP_NAME, "Не удалось открыть файл:\n%s" % ex, parent=self)
+            return
+        except WrongPassword:
+            # 2) мастер-пароли не совпали — переспрашиваем пароль архива
+            while True:
+                pw = simpledialog.askstring(
+                    APP_NAME,
+                    "Мастер-пароль архива не совпадает с текущим.\n"
+                    "Введите мастер-пароль этого архива:",
+                    show="\u2022", parent=self)
+                if pw is None:
+                    return
+                try:
+                    entries = vaultmod.read_vault_file(path, pw)
+                    break
+                except WrongPassword:
+                    messagebox.showerror(APP_NAME, "Неверный пароль архива. Попробуйте ещё раз.", parent=self)
+        if not isinstance(entries, list):
+            messagebox.showerror(APP_NAME, "Архив повреждён или пуст.", parent=self)
+            return
+        # добавляем к имеющимся, пропуская дубликаты
+        existing = {self._entry_key(e) for e in self.vault.entries}
+        added = 0
+        for e in entries:
+            if not isinstance(e, dict):
+                continue
+            k = self._entry_key(e)
+            if k in existing:
+                continue
+            self.vault.entries.append(e)
+            existing.add(k)
+            added += 1
+        self.vault.save()
+        self._refresh()
+        self.backup_var.set("")
+        messagebox.showinfo(
+            APP_NAME,
+            "Загружено новых записей: %d\nПропущено дубликатов: %d"
+            % (added, len(entries) - added), parent=self)
 
 
 def main():
