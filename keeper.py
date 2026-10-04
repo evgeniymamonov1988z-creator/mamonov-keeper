@@ -130,32 +130,47 @@ class App(tk.Tk):
 
     # ---------- тёмная тема ----------
     def _apply_dark_theme(self):
-        BG = "#1e1e1e"       # фон окна
-        PANEL = "#2b2b2b"    # поля/таблица
-        FG = "#e6e6e6"       # текст
+        BG = "#000000"       # фон окна (чёрный)
+        PANEL = "#000000"    # поля/таблица
+        FG = "#ffffff"       # текст (белый)
         SEL = "#3a5a8c"      # выделение
-        BTN = "#3c3c3c"
-        BTN_ACT = "#505050"
+        BTN = "#1a1a1a"
+        BTN_ACT = "#333333"
         self.configure(bg=BG)
+
+        # --- крупный чёткий шрифт (чтобы было хорошо видно) ---
+        import tkinter.font as tkfont
+        UI_FONT = ("Segoe UI", 12)
+        for _name in ("TkDefaultFont", "TkTextFont", "TkMenuFont",
+                      "TkHeadingFont", "TkIconFont"):
+            try:
+                f = tkfont.nametofont(_name)
+                f.configure(family="Segoe UI", size=12)
+            except tk.TclError:
+                pass
+
         style = ttk.Style(self)
         try:
             style.theme_use("clam")
         except tk.TclError:
             pass
+        style.configure(".", font=UI_FONT)
         style.configure("TFrame", background=BG)
-        style.configure("TLabel", background=BG, foreground=FG)
-        style.configure("TButton", background=BTN, foreground=FG, borderwidth=0)
+        style.configure("TLabel", background=BG, foreground=FG, font=UI_FONT)
+        style.configure("TButton", background=BTN, foreground=FG, borderwidth=0,
+                        font=UI_FONT, padding=(10, 6))
         style.map("TButton",
                   background=[("active", BTN_ACT), ("pressed", BTN_ACT)])
         style.configure("TEntry", fieldbackground=PANEL, foreground=FG,
-                        insertcolor=FG, bordercolor=BTN)
+                        insertcolor=FG, bordercolor=BTN, padding=4)
         style.configure("Treeview", background=PANEL, foreground=FG,
-                        fieldbackground=PANEL, bordercolor=BG, borderwidth=0)
+                        fieldbackground=PANEL, bordercolor=BG, borderwidth=0,
+                        font=("Segoe UI", 12), rowheight=30)
         style.map("Treeview",
                   background=[("selected", SEL)],
                   foreground=[("selected", "#ffffff")])
         style.configure("Treeview.Heading", background=BTN, foreground=FG,
-                        borderwidth=0)
+                        borderwidth=0, font=("Segoe UI", 12, "bold"))
         style.map("Treeview.Heading", background=[("active", BTN_ACT)])
 
     # ---------- интерфейс ----------
@@ -185,9 +200,9 @@ class App(tk.Tk):
         self.tree.column("copy", width=40, anchor="center", stretch=False)
         self.tree.column("del", width=40, anchor="center", stretch=False)
         self.tree.pack(fill="both", expand=True, padx=10, pady=(8, 4))
-        # чередующиеся серые оттенки строк (светлее и контрастнее, чтобы было хорошо видно)
-        self.tree.tag_configure("odd", background="#4a4a4a", foreground="#ffffff")
-        self.tree.tag_configure("even", background="#5a5a5a", foreground="#ffffff")
+        # чередующиеся строки на чёрном фоне, белый текст
+        self.tree.tag_configure("odd", background="#000000", foreground="#ffffff")
+        self.tree.tag_configure("even", background="#141414", foreground="#ffffff")
         # клик по ячейке — копировать; клик по корзине — удалить
         self.tree.bind("<Button-1>", self._on_click)
         # двойной клик — редактировать запись
@@ -353,8 +368,8 @@ class App(tk.Tk):
             # Показываем повышенное поле, чтобы удобно вставлять целиком;
             # в таблице же всё равно останется одна строка (точки).
             ed = tk.Text(self.tree, wrap="word", height=6,
-                         bg="#2b2b2b", fg="#ffffff", insertbackground="#ffffff",
-                         relief="solid", borderwidth=1)
+                         bg="#000000", fg="#ffffff", insertbackground="#ffffff",
+                         relief="solid", borderwidth=1, font=("Segoe UI", 12))
             ed.insert("1.0", value)
             ed.place(x=x, y=y, width=max(w, 300), height=max(h * 6, 110))
             ed.focus_set()
