@@ -22,6 +22,12 @@ from vault import Vault, WrongPassword, BadFile
 APP_NAME = "Ключница"
 
 
+def resource_path(name: str) -> str:
+    """Путь к ресурсу рядом с программой (работает и в .exe PyInstaller)."""
+    base = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(base, name)
+
+
 def vault_path() -> str:
     """Путь к файлу хранилища в %APPDATA%\\MAMONOV\\Klyuchnica."""
     base = os.environ.get("APPDATA") or os.path.expanduser("~")
@@ -40,6 +46,11 @@ class App(tk.Tk):
         self.minsize(540, 320)
         # Окно поверх всех приложений (не прячется за браузером и т.п.)
         self.attributes("-topmost", True)
+        # значок окна и панели задач
+        try:
+            self.iconbitmap(resource_path("keeper.ico"))
+        except Exception:
+            pass
         self.vault = Vault(vault_path())
 
         if not self._unlock():

@@ -25,7 +25,7 @@ jobs:
           python -m pip install pyinstaller
 
       - name: Build EXE (single file)
-        run: pyinstaller --noconfirm --clean --name "Keeper" --onefile --windowed keeper.py
+        run: pyinstaller --noconfirm --clean --name "Keeper" --onefile --windowed --icon keeper.ico --add-data "keeper.ico;." keeper.py
 
       - name: Create self-signed certificate and sign
         shell: pwsh
