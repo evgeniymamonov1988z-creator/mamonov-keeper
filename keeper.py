@@ -543,7 +543,52 @@ class App(tk.Tk):
             % (added, len(entries) - added), parent=self)
 
 
+# держим handle mutex живым на всё время работы программы
+_SINGLE_INSTANCE_HANDLE = None
+
+
+def ensure_single_instance() -> bool:
+    """Разрешает только одно окно «Ключницы».
+
+    Если программа уже запущена — поднимает старое окно на
+    передний план и возвращает False (второе окно не открывать).
+    На не-Windows всегда разрешает (для разработки).
+    """
+    global _SINGLE_INSTANCE_HANDLE
+    try:
+        import ctypes
+        from ctypes import wintypes
+    except Exception:
+        return True
+    if not hasattr(ctypes, "windll"):
+        return True
+
+    MUTEX_NAME = "Global\\MAMONOV_Klyuchnica_SingleInstance"
+    ERROR_ALREADY_EXISTS = 183
+    kernel32 = ctypes.windll.kernel32
+
+    handle = kernel32.CreateMutexW(None, False, MUTEX_NAME)
+    last_err = kernel32.GetLastError()
+    _SINGLE_INSTANCE_HANDLE = handle
+
+    if last_err == ERROR_ALREADY_EXISTS:
+        # Уже запущена — попробуем поднять старое окно
+        try:
+            user32 = ctypes.windll.user32
+            hwnd = user32.FindWindowW(None, APP_NAME)
+            if hwnd:
+                SW_RESTORE = 9
+                user32.ShowWindow(hwnd, SW_RESTORE)
+                user32.SetForegroundWindow(hwnd)
+        except Exception:
+            pass
+        return False
+    return True
+
+
 def main():
+    if not ensure_single_instance():
+        return  # «Ключница» уже открыта — второе окно не открываем
     app = App()
     try:
         app.mainloop()
