@@ -128,16 +128,18 @@ class App(tk.Tk):
         ttk.Entry(sfrm, textvariable=self.search_var).pack(
             side="left", fill="x", expand=True, padx=(6, 0))
 
-        # Таблица записей. Последний столбец — корзина для удаления.
-        cols = ("note", "login", "password", "del")
+        # Таблица записей. Последние столбцы — копировать строку и корзина.
+        cols = ("note", "login", "password", "copy", "del")
         self.tree = ttk.Treeview(self, columns=cols, show="headings", selectmode="browse")
         self.tree.heading("note", text="Примечание")
         self.tree.heading("login", text="Логин")
         self.tree.heading("password", text="Пароль")
+        self.tree.heading("copy", text="")
         self.tree.heading("del", text="")
         self.tree.column("note", width=230)
         self.tree.column("login", width=200)
         self.tree.column("password", width=160)
+        self.tree.column("copy", width=40, anchor="center", stretch=False)
         self.tree.column("del", width=40, anchor="center", stretch=False)
         self.tree.pack(fill="both", expand=True, padx=10, pady=(8, 4))
         # чередующиеся серые оттенки строк (светлее и контрастнее, чтобы было хорошо видно)
@@ -178,7 +180,7 @@ class App(tk.Tk):
             iid = self.tree.insert(
                 "", "end",
                 values=(e.get("note", ""), e.get("login", ""),
-                        self._pw_cell(e.get("password", "")), "\U0001f5d1"),
+                        self._pw_cell(e.get("password", "")), "\U0001f4cb", "\U0001f5d1"),
                 tags=("even" if len(self._index_map) % 2 else "odd",))
             self._index_map[iid] = i
         self.status.config(text="Записей: %d" % len(self.vault.entries))
@@ -201,8 +203,11 @@ class App(tk.Tk):
         if idx is None:
             return
         col = self.tree.identify_column(event.x)
-        if col == "#4":            # корзина
+        if col == "#5":            # корзина — удалить
             self._delete_index(idx)
+            return
+        if col == "#4":            # копировать всю строку
+            self._copy_row(idx)
             return
         e = self.vault.entries[idx]
         fields = {
@@ -221,6 +226,22 @@ class App(tk.Tk):
         self.clipboard_append(value)
         self.status.config(text="Скопировано: %s" % label)
 
+    def _copy_row(self, idx):
+        """Скопировать всю строку (логин, пароль, примечание) в буфер."""
+        e = self.vault.entries[idx]
+        parts = []
+        for key, label in (("login", "Логин"), ("password", "Пароль"),
+                           ("note", "Примечание")):
+            val = e.get(key, "")
+            if val:
+                parts.append("%s: %s" % (label, val))
+        if not parts:
+            self.status.config(text="Строка пустая.")
+            return
+        self.clipboard_clear()
+        self.clipboard_append("\n".join(parts))
+        self.status.config(text="Скопирована вся строка.")
+
     def _on_double_click(self, event):
         """Двойной клик по ячейке (не по корзине) — редактировать прямо в таблице."""
         if self.tree.identify("region", event.x, event.y) != "cell":
@@ -228,6 +249,8 @@ class App(tk.Tk):
         row = self.tree.identify_row(event.y)
         col = self.tree.identify_column(event.x)
         if not row or col == "#4":
+            return
+        if col == "#5":
             return
         self._begin_edit(row, col)
 
