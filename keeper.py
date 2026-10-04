@@ -165,10 +165,10 @@ class App(tk.Tk):
         # Панель архива: сохранить на Рабочий стол и загрузить из файла
         arc = ttk.Frame(self, padding=(10, 2))
         arc.pack(fill="x")
-        ttk.Button(arc, text="Сохранить архив", command=self._save_backup).pack(side="left")
-        ttk.Label(arc, text="Архив:").pack(side="left", padx=(14, 0))
+        ttk.Button(arc, text="Сохранить копию", command=self._save_backup).pack(side="left")
+        ttk.Label(arc, text="Копия:").pack(side="left", padx=(14, 0))
         self.backup_var = tk.StringVar()
-        bk_entry = ttk.Entry(arc, textvariable=self.backup_var, width=24)
+        bk_entry = ttk.Entry(arc, textvariable=self.backup_var, width=18)
         bk_entry.pack(side="left", padx=(4, 0))
         bk_entry.bind("<Return>", lambda e: self._load_backup(self.backup_var.get().strip()))
         ttk.Button(arc, text="\u2026", width=3, command=self._browse_backup).pack(side="left", padx=(4, 0))
@@ -399,9 +399,9 @@ class App(tk.Tk):
             return
         messagebox.showinfo(
             APP_NAME,
-            "Архив сохранён на Рабочий стол:\n%s\n\n"
-            "Он зашифрован вашим мастер-паролем." % name)
-        self.status.config(text="Архив сохранён: %s" % name)
+            "Резервная копия сохранена на Рабочий стол:\n%s\n\n"
+            "Она зашифрована вашим мастер-паролем." % name)
+        self.status.config(text="Резервная копия сохранена: %s" % name)
 
     def _browse_backup(self):
         """Выбрать файл-архив и загрузить его."""
