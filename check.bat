@@ -19,10 +19,15 @@ if errorlevel 1 (
 )
 echo.
 
-echo [2] Checking encryption library...
+echo [2] Checking required libraries...
 python -c "import cryptography; print('cryptography OK', cryptography.__version__)"
 if errorlevel 1 (
     echo     Not found - installing...
+    python -m pip install -r requirements.txt
+)
+python -c "import uiautomation; print('uiautomation OK')"
+if errorlevel 1 (
+    echo     uiautomation not found - installing...
     python -m pip install -r requirements.txt
 )
 echo.

@@ -7,7 +7,7 @@ where pythonw >nul 2>&1 && set "PY=pythonw"
 if not defined PY where python >nul 2>&1 && set "PY=python"
 if not defined PY goto no_python
 
-python -c "import cryptography" >nul 2>&1
+python -c "import cryptography, uiautomation" >nul 2>&1
 if errorlevel 1 (
     echo First run: installing required components...
     python -m pip install -r requirements.txt

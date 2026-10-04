@@ -11,11 +11,13 @@
 
 import os
 import sys
+import threading
 import tkinter as tk
 from tkinter import ttk, messagebox, simpledialog, filedialog
 
 import pwgen
 import browser_io
+import watcher
 from vault import Vault, WrongPassword, BadFile
 
 APP_NAME = "Ключница"
@@ -109,6 +111,11 @@ class App(tk.Tk):
         # Окно поверх всех приложений (не прячется за браузером и т.п.)
         self.attributes("-topmost", True)
         self.vault = Vault(vault_path())
+        # слежение за браузером включено всегда (по умолчанию)
+        self.watch_on = True
+        self._watch_job = None
+        self._last_site = None
+        self.detected_site = None
 
         if not self._unlock():
             self.destroy()
@@ -116,6 +123,9 @@ class App(tk.Tk):
 
         self._build_ui()
         self._refresh()
+        # сразу начинаем следить за браузером, если это возможно
+        if watcher.available():
+            self._watch_tick()
 
     # ---------- разблокировка ----------
     def _unlock(self) -> bool:
@@ -315,6 +325,55 @@ class App(tk.Tk):
             "1. Откройте настройки паролей браузера.\n"
             "2. «Импорт» → выберите этот CSV-файл.\n\n"
             "❗ Файл не зашифрован — удалите его после импорта!" % n)
+
+    # ---------- слежение за браузером ----------
+    def _watch_tick(self):
+        """Один цикл проверки — в фоновом потоке, чтобы окно не подвисало."""
+        if not self.watch_on:
+            return
+
+        def work():
+            try:
+                site = watcher.get_active_site()
+            except Exception:
+                site = None
+            try:
+                self.after(0, lambda: self._watch_result(site))
+            except Exception:
+                pass
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _watch_result(self, site):
+        """Пришёл результат определения сайта — обновить список."""
+        if not self.watch_on:
+            return
+        if site and site != self._last_site:
+            self._last_site = site
+            self.detected_site = site
+            self._show_matches(site)
+        # следующая проверка
+        self._watch_job = self.after(1200, self._watch_tick)
+
+    def _show_matches(self, site):
+        """Показать только записи, подходящие к открытому сайту."""
+        self.tree.delete(*self.tree.get_children())
+        self._index_map = {}
+        for i, e in enumerate(self.vault.entries):
+            if watcher.same_site(site, e.get("url", "")):
+                iid = self.tree.insert(
+                    "", "end",
+                    values=(e.get("title", ""), e.get("login", ""), e.get("url", "")))
+                self._index_map[iid] = i
+        matches = len(self._index_map)
+        if matches:
+            first = next(iter(self._index_map))
+            self.tree.selection_set(first)
+            self.tree.focus(first)
+            self.status.config(
+                text="Сайт: %s — паролей: %d. Нажмите «Копировать пароль»." % (site, matches))
+        else:
+            self.status.config(text="Сайт: %s — подходящих паролей нет." % site)
 
     def _change_master(self):
         p1 = simpledialog.askstring(APP_NAME, "Новый мастер-пароль:", show="\u2022", parent=self)
