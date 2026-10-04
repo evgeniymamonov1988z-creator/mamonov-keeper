@@ -140,6 +140,9 @@ class App(tk.Tk):
         self.tree.column("password", width=160)
         self.tree.column("del", width=40, anchor="center", stretch=False)
         self.tree.pack(fill="both", expand=True, padx=10, pady=(8, 4))
+        # чередующиеся серые оттенки строк
+        self.tree.tag_configure("odd", background="#2b2b2b")
+        self.tree.tag_configure("even", background="#363636")
         # клик по ячейке — копировать; клик по корзине — удалить
         self.tree.bind("<Button-1>", self._on_click)
         # двойной клик — редактировать запись
@@ -175,7 +178,8 @@ class App(tk.Tk):
             iid = self.tree.insert(
                 "", "end",
                 values=(e.get("note", ""), e.get("login", ""),
-                        self._pw_cell(e.get("password", "")), "\U0001f5d1"))
+                        self._pw_cell(e.get("password", "")), "\U0001f5d1"),
+                tags=("even" if len(self._index_map) % 2 else "odd",))
             self._index_map[iid] = i
         self.status.config(text="Записей: %d" % len(self.vault.entries))
 
