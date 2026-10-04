@@ -54,7 +54,7 @@ class EntryDialog(tk.Toplevel):
             ("Логин", "login"),
             ("Пароль", "password"),
             ("Сайт", "url"),
-            ("Заметка", "note"),
+            ("Примечание", "note"),
         ]
         for i, (label, key) in enumerate(rows):
             ttk.Label(frm, text=label + ":").grid(row=i, column=0, sticky="e", padx=(0, 8), pady=4)
@@ -90,8 +90,10 @@ class EntryDialog(tk.Toplevel):
         self._show_pw.set(True)
 
     def _ok(self):
-        if not self.vars["title"].get().strip():
-            messagebox.showwarning(APP_NAME, "Укажите название записи.", parent=self)
+        has_any = any(self.vars[k].get().strip() for k in ("login", "password", "note"))
+        if not has_any:
+            messagebox.showwarning(
+                APP_NAME, "Заполните хотя бы логин, пароль или примечание.", parent=self)
             return
         self.result = {k: v.get().strip() for k, v in self.vars.items()}
         self.destroy()
@@ -168,17 +170,15 @@ class App(tk.Tk):
             side="left", fill="x", expand=True, padx=(6, 0))
 
         # Таблица записей. Последний столбец — корзина для удаления.
-        cols = ("title", "login", "password", "url", "del")
+        cols = ("note", "login", "password", "del")
         self.tree = ttk.Treeview(self, columns=cols, show="headings", selectmode="browse")
-        self.tree.heading("title", text="Название")
+        self.tree.heading("note", text="Примечание")
         self.tree.heading("login", text="Логин")
         self.tree.heading("password", text="Пароль")
-        self.tree.heading("url", text="Сайт")
         self.tree.heading("del", text="")
-        self.tree.column("title", width=170)
-        self.tree.column("login", width=150)
-        self.tree.column("password", width=130)
-        self.tree.column("url", width=190)
+        self.tree.column("note", width=230)
+        self.tree.column("login", width=200)
+        self.tree.column("password", width=160)
         self.tree.column("del", width=40, anchor="center", stretch=False)
         self.tree.pack(fill="both", expand=True, padx=10, pady=(8, 4))
         # клик по ячейке — копировать; клик по корзине — удалить
@@ -207,13 +207,14 @@ class App(tk.Tk):
         self.tree.delete(*self.tree.get_children())
         self._index_map = {}
         for i, e in enumerate(self.vault.entries):
-            hay = (e.get("title", "") + e.get("login", "") + e.get("url", "")).lower()
+            hay = (e.get("title", "") + e.get("login", "") + e.get("url", "")
+                   + e.get("note", "")).lower()
             if query and query not in hay:
                 continue
             iid = self.tree.insert(
                 "", "end",
-                values=(e.get("title", ""), e.get("login", ""),
-                        self._pw_cell(e.get("password", "")), e.get("url", ""), "\U0001f5d1"))
+                values=(e.get("note", ""), e.get("login", ""),
+                        self._pw_cell(e.get("password", "")), "\U0001f5d1"))
             self._index_map[iid] = i
         self.status.config(text="Записей: %d" % len(self.vault.entries))
 
@@ -235,15 +236,14 @@ class App(tk.Tk):
         if idx is None:
             return
         col = self.tree.identify_column(event.x)
-        if col == "#5":            # корзина
+        if col == "#4":            # корзина
             self._delete_index(idx)
             return
         e = self.vault.entries[idx]
         fields = {
-            "#1": ("title", "Название"),
+            "#1": ("note", "Примечание"),
             "#2": ("login", "Логин"),
             "#3": ("password", "Пароль"),
-            "#4": ("url", "Сайт"),
         }
         if col not in fields:
             return
@@ -260,7 +260,7 @@ class App(tk.Tk):
         """Двойной клик по строке (не по корзине) — изменить запись."""
         if self.tree.identify("region", event.x, event.y) != "cell":
             return
-        if self.tree.identify_column(event.x) == "#5":
+        if self.tree.identify_column(event.x) == "#4":
             return
         self._edit()
 
@@ -288,8 +288,9 @@ class App(tk.Tk):
         """Удалить запись по номеру (с подтверждением)."""
         if idx is None:
             return
-        title = self.vault.entries[idx].get("title", "")
-        if messagebox.askyesno(APP_NAME, "Удалить запись «%s»?" % title, parent=self):
+        e = self.vault.entries[idx]
+        label = e.get("note") or e.get("login") or e.get("title") or "эту запись"
+        if messagebox.askyesno(APP_NAME, "Удалить «%s»?" % label, parent=self):
             self.vault.delete(idx)
             self._refresh()
 
